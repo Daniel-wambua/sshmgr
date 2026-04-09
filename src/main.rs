@@ -23,6 +23,8 @@ enum Commands {
     List,
     Connect {
         name: String,
+        #[arg(long)]
+        plain: bool,
     },
     Remove {
         name: String,
@@ -110,7 +112,7 @@ fn list_hosts(path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-fn connect_host(path: &PathBuf, name: String) -> Result<(), String> {
+fn connect_host_with_mode(path: &PathBuf, name: String, plain: bool) -> Result<(), String> {
     let data = load_hosts(path)?;
     let host = data
         .hosts
@@ -118,22 +120,58 @@ fn connect_host(path: &PathBuf, name: String) -> Result<(), String> {
         .find(|h| h.name == name)
         .ok_or_else(|| format!("Host '{}' not found", name))?;
 
-    let destination = format!("{}@{}", host.user, host.host);
+    let mut command = build_connect_command(host, plain);
+    let program = command.get_program().to_string_lossy().into_owned();
 
-    let status = Command::new("ssh")
-        .arg("-p")
-        .arg(host.port.to_string())
-        .arg(destination)
+    let status = command
         .status()
-        .map_err(|e| format!("Failed to execute ssh command: {}", e))?;
+        .map_err(|e| format!("Failed to execute {} command: {}", program, e))?;
 
     if status.success() {
-        Ok(())
+        return Ok(());
+    }
+
+    let exit_name = if plain { "ssh" } else { "tmux-backed ssh" };
+
+    match status.code() {
+        Some(code) => Err(format!("{} exited with status code {}", exit_name, code)),
+        None => Err(format!("{} terminated by signal", exit_name)),
+    }
+}
+
+fn build_connect_command(host: &Host, plain: bool) -> Command {
+    let destination = format!("{}@{}", host.user, host.host);
+    let mut command = Command::new("ssh");
+    command.arg("-p").arg(host.port.to_string()).arg(destination);
+
+    if !plain {
+        command
+            .arg("tmux")
+            .arg("new-session")
+            .arg("-A")
+            .arg("-s")
+            .arg(tmux_session_name(&host.name));
+    }
+
+    command
+}
+
+fn tmux_session_name(name: &str) -> String {
+    let sanitized: String = name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    if sanitized.is_empty() {
+        String::from("sshmgr-session")
     } else {
-        match status.code() {
-            Some(code) => Err(format!("ssh exited with status code {}", code)),
-            None => Err(String::from("ssh terminated by signal")),
-        }
+        format!("sshmgr-{}", sanitized)
     }
 }
 
@@ -165,7 +203,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Commands::List => list_hosts(&path),
-        Commands::Connect { name } => connect_host(&path, name),
+        Commands::Connect { name, plain } => connect_host_with_mode(&path, name, plain),
         Commands::Remove { name } => {
             remove_host(&path, name)?;
             println!("Host removed.");
@@ -185,4 +223,77 @@ fn writeln_err(message: &str) -> io::Result<()> {
     use std::io::Write;
     let mut stderr = io::stderr().lock();
     writeln!(stderr, "Error: {}", message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    #[test]
+    fn tmux_session_name_sanitizes_invalid_characters() {
+        assert_eq!(tmux_session_name("web root/1"), "sshmgr-web_root_1");
+    }
+
+    #[test]
+    fn tmux_session_name_falls_back_for_empty_names() {
+        assert_eq!(tmux_session_name(""), "sshmgr-session");
+    }
+
+    #[test]
+    fn build_connect_command_uses_tmux_by_default() {
+        let host = Host {
+            name: String::from("webroot"),
+            user: String::from("alice"),
+            host: String::from("192.168.1.10"),
+            port: 22,
+        };
+
+        let command = build_connect_command(&host, false);
+        let args: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(command.get_program(), OsStr::new("ssh"));
+        assert_eq!(
+            args,
+            vec![
+                String::from("-p"),
+                String::from("22"),
+                String::from("alice@192.168.1.10"),
+                String::from("tmux"),
+                String::from("new-session"),
+                String::from("-A"),
+                String::from("-s"),
+                String::from("sshmgr-webroot"),
+            ]
+        );
+    }
+
+    #[test]
+    fn build_connect_command_supports_plain_mode() {
+        let host = Host {
+            name: String::from("webroot"),
+            user: String::from("alice"),
+            host: String::from("192.168.1.10"),
+            port: 22,
+        };
+
+        let command = build_connect_command(&host, true);
+        let args: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(command.get_program(), OsStr::new("ssh"));
+        assert_eq!(
+            args,
+            vec![
+                String::from("-p"),
+                String::from("22"),
+                String::from("alice@192.168.1.10"),
+            ]
+        );
+    }
 }

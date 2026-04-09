@@ -19,17 +19,21 @@ It stores host entries in:
 
 and executes the system `ssh` command when connecting.
 
+By default, `connect` starts a remote `tmux` session so an interactive shell can survive a dropped SSH connection. If you want the original plain SSH behavior, use `--plain`.
+
 ## Features
 
 - Add a host entry by name
 - List all saved hosts
-- Connect to a saved host via system `ssh`
+- Connect to a saved host through a remote `tmux` session by default
+- Optionally connect with plain system `ssh`
 - Remove a saved host
 - Graceful error handling with clear messages
 
 ## Requirements
 
 - Linux or macOS environment with `ssh` installed
+- `tmux` on the remote host for the default persistent session mode
 - Rust stable toolchain (for building from source)
 
 ## Install and Build
@@ -59,6 +63,7 @@ cd sshmngr
 This script will:
 
 - Install Rust/Cargo if missing
+- Install `tmux` if missing and a supported package manager is available
 - Install `sshmgr` globally with `cargo install --path .`
 - Ensure `~/.cargo/bin` is in PATH
 - Print a success message
@@ -101,11 +106,15 @@ Example:
 sshmgr connect webroot
 ```
 
-This runs:
+This opens a remote `tmux` session by default, so the command you type stays short.
+
+To skip `tmux` and use plain SSH, add `--plain`:
 
 ```bash
-ssh -p <port> <user>@<host>
+sshmgr connect --plain webroot
 ```
+
+The remote host must have `tmux` installed for the default persistent mode.
 
 ### 4) Remove host
 
