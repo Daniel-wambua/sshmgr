@@ -141,16 +141,23 @@ fn connect_host_with_mode(path: &PathBuf, name: String, plain: bool) -> Result<(
 
 fn build_connect_command(host: &Host, plain: bool) -> Command {
     let destination = format!("{}@{}", host.user, host.host);
-    let mut command = Command::new("ssh");
-    command.arg("-p").arg(host.port.to_string()).arg(destination);
-
-    if !plain {
+    let mut command = if plain {
+        Command::new("ssh")
+    } else {
+        Command::new("tmux")
+    };
+    if plain {
+        command.arg("-p").arg(host.port.to_string()).arg(destination);
+    } else {
         command
-            .arg("tmux")
             .arg("new-session")
             .arg("-A")
             .arg("-s")
-            .arg(tmux_session_name(&host.name));
+            .arg(tmux_session_name(&host.name))
+            .arg("ssh")
+            .arg("-p")
+            .arg(host.port.to_string())
+            .arg(destination);
     }
 
     command
@@ -255,18 +262,18 @@ mod tests {
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect();
 
-        assert_eq!(command.get_program(), OsStr::new("ssh"));
+        assert_eq!(command.get_program(), OsStr::new("tmux"));
         assert_eq!(
             args,
             vec![
-                String::from("-p"),
-                String::from("22"),
-                String::from("alice@192.168.1.10"),
-                String::from("tmux"),
                 String::from("new-session"),
                 String::from("-A"),
                 String::from("-s"),
                 String::from("sshmgr-webroot"),
+                String::from("ssh"),
+                String::from("-p"),
+                String::from("22"),
+                String::from("alice@192.168.1.10"),
             ]
         );
     }

@@ -19,13 +19,13 @@ It stores host entries in:
 
 and executes the system `ssh` command when connecting.
 
-By default, `connect` starts a remote `tmux` session so an interactive shell can survive a dropped SSH connection. If you want the original plain SSH behavior, use `--plain`.
+By default, `connect` starts inside a local `tmux` session before launching SSH so the connection can stay attached in a persistent terminal. If you want the original plain SSH behavior, use `--plain`.
 
 ## Features
 
 - Add a host entry by name
 - List all saved hosts
-- Connect to a saved host through a remote `tmux` session by default
+- Connect to a saved host through a local `tmux` session by default
 - Optionally connect with plain system `ssh`
 - Remove a saved host
 - Graceful error handling with clear messages
@@ -33,7 +33,7 @@ By default, `connect` starts a remote `tmux` session so an interactive shell can
 ## Requirements
 
 - Linux or macOS environment with `ssh` installed
-- `tmux` on the remote host for the default persistent session mode
+- `tmux` on the local machine for the default persistent session mode
 - Rust stable toolchain (for building from source)
 
 ## Install and Build
@@ -106,7 +106,7 @@ Example:
 sshmgr connect webroot
 ```
 
-This opens a remote `tmux` session by default, so the command you type stays short.
+This opens a local `tmux` session by default, so the command you type stays short.
 
 To skip `tmux` and use plain SSH, add `--plain`:
 
@@ -114,7 +114,7 @@ To skip `tmux` and use plain SSH, add `--plain`:
 sshmgr connect --plain webroot
 ```
 
-The remote host must have `tmux` installed for the default persistent mode.
+The local machine must have `tmux` installed for the default persistent mode.
 
 ### 4) Remove host
 
